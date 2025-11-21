@@ -1,0 +1,359 @@
+import React, { useState } from 'react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { Calculator, CheckCircle, XCircle, RotateCcw, TrendingUp } from 'lucide-react';
+
+const ForecastingTool = () => {
+  const [selectedDataset, setSelectedDataset] = useState('sales');
+  const [answers, setAnswers] = useState({});
+  const [showResults, setShowResults] = useState(false);
+
+  const datasets = {
+    sales: {
+      name: "Monthly Product Sales",
+      data: [120, 135, 148, 142, 156, 168, 175, 182, 190, 198, 205, 215],
+      unit: "units"
+    },
+    demand: {
+      name: "Weekly Customer Demand",
+      data: [45, 52, 48, 55, 61, 58, 64, 67, 72, 68, 75, 80],
+      unit: "orders"
+    },
+    revenue: {
+      name: "Quarterly Revenue",
+      data: [2400, 2650, 2800, 2950, 3100, 3300, 3450, 3600, 3750, 3900, 4050, 4200],
+      unit: "$K"
+    }
+  };
+
+  const currentData = datasets[selectedDataset].data;
+
+  const calculateMovingAverage = (data, periods) => {
+    const lastValues = data.slice(-periods);
+    return lastValues.reduce((a, b) => a + b, 0) / periods;
+  };
+
+  const calculateWeightedMA = (data, weights) => {
+    const lastValues = data.slice(-weights.length);
+    const weightedSum = lastValues.reduce((sum, val, i) => sum + val * weights[i], 0);
+    const weightSum = weights.reduce((a, b) => a + b, 0);
+    return weightedSum / weightSum;
+  };
+
+  const calculateExponentialSmoothing = (data, alpha) => {
+    let forecast = data[0];
+    for (let i = 1; i < data.length; i++) {
+      forecast = alpha * data[i] + (1 - alpha) * forecast;
+    }
+    const nextForecast = alpha * data[data.length - 1] + (1 - alpha) * forecast;
+    return { previousForecast: forecast, nextForecast };
+  };
+
+  const calculateLinearRegression = (data) => {
+    const n = data.length;
+    const x = Array.from({ length: n }, (_, i) => i + 1);
+    const y = data;
+    
+    const sumX = x.reduce((a, b) => a + b, 0);
+    const sumY = y.reduce((a, b) => a + b, 0);
+    const sumXY = x.reduce((sum, xi, i) => sum + xi * y[i], 0);
+    const sumX2 = x.reduce((sum, xi) => sum + xi * xi, 0);
+    
+    const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+    const intercept = (sumY - slope * sumX) / n;
+    
+    return slope * (n + 1) + intercept;
+  };
+
+  const correctAnswers = {
+    ma3: calculateMovingAverage(currentData, 3),
+    ma4: calculateMovingAverage(currentData, 4),
+    wma: calculateWeightedMA(currentData, [0.5, 0.3, 0.2]),
+    es: calculateExponentialSmoothing(currentData, 0.3),
+    lr: calculateLinearRegression(currentData)
+  };
+
+  const handleInputChange = (method, value) => {
+    setAnswers({ ...answers, [method]: value });
+  };
+
+  const checkAnswer = (method) => {
+    if (!showResults) return null;
+    const userAnswer = parseFloat(answers[method]);
+    const correct = correctAnswers[method];
+    const diff = Math.abs(userAnswer - correct);
+    const tolerance = correct * 0.02; // 2% tolerance
+    
+    return diff <= tolerance;
+  };
+
+  const handleSubmit = () => {
+    setShowResults(true);
+  };
+
+  const handleReset = () => {
+    setAnswers({});
+    setShowResults(false);
+  };
+
+  const chartData = currentData.map((value, index) => ({
+    period: index + 1,
+    actual: value
+  }));
+
+  if (showResults) {
+    chartData.push({
+      period: currentData.length + 1,
+      forecast: correctAnswers.lr
+    });
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
+      <div className="max-w-6xl mx-auto">
+        <div className="bg-white rounded-lg shadow-lg p-8 mb-6">
+          <div className="flex items-center gap-3 mb-6">
+            <TrendingUp className="w-8 h-8 text-indigo-600" />
+            <h1 className="text-3xl font-bold text-gray-800">Forecasting Practice Tool</h1>
+          </div>
+          
+          <div className="mb-6">
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Select Dataset:
+            </label>
+            <select 
+              value={selectedDataset}
+              onChange={(e) => {
+                setSelectedDataset(e.target.value);
+                handleReset();
+              }}
+              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            >
+              {Object.keys(datasets).map(key => (
+                <option key={key} value={key}>{datasets[key].name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="bg-gray-50 rounded-lg p-4 mb-6">
+            <h3 className="font-semibold text-gray-700 mb-3">Historical Data ({datasets[selectedDataset].unit}):</h3>
+            <div className="grid grid-cols-6 md:grid-cols-12 gap-2">
+              {currentData.map((value, index) => (
+                <div key={index} className="bg-white p-2 rounded text-center border border-gray-200">
+                  <div className="text-xs text-gray-500">P{index + 1}</div>
+                  <div className="font-semibold text-indigo-700">{value}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="period" label={{ value: 'Period', position: 'insideBottom', offset: -5 }} />
+              <YAxis label={{ value: datasets[selectedDataset].unit, angle: -90, position: 'insideLeft' }} />
+              <Tooltip />
+              <Legend />
+              <Line type="monotone" dataKey="actual" stroke="#4f46e5" strokeWidth={2} dot={{ r: 4 }} />
+              {showResults && (
+                <Line type="monotone" dataKey="forecast" stroke="#10b981" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 6 }} />
+              )}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-lg p-8">
+          <h2 className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+            <Calculator className="w-6 h-6 text-indigo-600" />
+            Calculate Forecasts for Period {currentData.length + 1}
+          </h2>
+
+          <div className="space-y-6">
+            <div className="border border-gray-200 rounded-lg p-4">
+              <label className="block font-semibold text-gray-700 mb-2">
+                1. Simple Moving Average (3 periods)
+              </label>
+              <p className="text-sm text-gray-600 mb-3">Average of the last 3 periods</p>
+              <div className="flex items-center gap-3">
+                <input
+                  type="number"
+                  step="0.01"
+                  value={answers.ma3 || ''}
+                  onChange={(e) => handleInputChange('ma3', e.target.value)}
+                  className="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                  placeholder="Enter your forecast"
+                  disabled={showResults}
+                />
+                {showResults && (
+                  <div className="flex items-center gap-2">
+                    {checkAnswer('ma3') ? (
+                      <CheckCircle className="w-6 h-6 text-green-500" />
+                    ) : (
+                      <XCircle className="w-6 h-6 text-red-500" />
+                    )}
+                    <span className="text-sm font-semibold text-gray-700">
+                      Correct: {correctAnswers.ma3.toFixed(2)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="border border-gray-200 rounded-lg p-4">
+              <label className="block font-semibold text-gray-700 mb-2">
+                2. Simple Moving Average (4 periods)
+              </label>
+              <p className="text-sm text-gray-600 mb-3">Average of the last 4 periods</p>
+              <div className="flex items-center gap-3">
+                <input
+                  type="number"
+                  step="0.01"
+                  value={answers.ma4 || ''}
+                  onChange={(e) => handleInputChange('ma4', e.target.value)}
+                  className="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                  placeholder="Enter your forecast"
+                  disabled={showResults}
+                />
+                {showResults && (
+                  <div className="flex items-center gap-2">
+                    {checkAnswer('ma4') ? (
+                      <CheckCircle className="w-6 h-6 text-green-500" />
+                    ) : (
+                      <XCircle className="w-6 h-6 text-red-500" />
+                    )}
+                    <span className="text-sm font-semibold text-gray-700">
+                      Correct: {correctAnswers.ma4.toFixed(2)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="border border-gray-200 rounded-lg p-4">
+              <label className="block font-semibold text-gray-700 mb-2">
+                3. Weighted Moving Average
+              </label>
+              <p className="text-sm text-gray-600 mb-3">Weights: 0.5 (most recent), 0.3, 0.2 (oldest)</p>
+              <div className="flex items-center gap-3">
+                <input
+                  type="number"
+                  step="0.01"
+                  value={answers.wma || ''}
+                  onChange={(e) => handleInputChange('wma', e.target.value)}
+                  className="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                  placeholder="Enter your forecast"
+                  disabled={showResults}
+                />
+                {showResults && (
+                  <div className="flex items-center gap-2">
+                    {checkAnswer('wma') ? (
+                      <CheckCircle className="w-6 h-6 text-green-500" />
+                    ) : (
+                      <XCircle className="w-6 h-6 text-red-500" />
+                    )}
+                    <span className="text-sm font-semibold text-gray-700">
+                      Correct: {correctAnswers.wma.toFixed(2)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="border border-gray-200 rounded-lg p-4">
+              <label className="block font-semibold text-gray-700 mb-2">
+                4. Exponential Smoothing (α = 0.3)
+              </label>
+              <p className="text-sm text-gray-600 mb-3">Use smoothing constant α = 0.3</p>
+              <div className="flex items-center gap-3">
+                <input
+                  type="number"
+                  step="0.01"
+                  value={answers.es || ''}
+                  onChange={(e) => handleInputChange('es', e.target.value)}
+                  className="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                  placeholder="Enter your forecast"
+                  disabled={showResults}
+                />
+                {showResults && (
+                  <div className="flex items-center gap-2">
+                    {checkAnswer('es') ? (
+                      <CheckCircle className="w-6 h-6 text-green-500" />
+                    ) : (
+                      <XCircle className="w-6 h-6 text-red-500" />
+                    )}
+                    <span className="text-sm font-semibold text-gray-700">
+                      Correct: {correctAnswers.es.toFixed(2)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="border border-gray-200 rounded-lg p-4">
+              <label className="block font-semibold text-gray-700 mb-2">
+                5. Linear Regression
+              </label>
+              <p className="text-sm text-gray-600 mb-3">Find the trend line and forecast the next period</p>
+              <div className="flex items-center gap-3">
+                <input
+                  type="number"
+                  step="0.01"
+                  value={answers.lr || ''}
+                  onChange={(e) => handleInputChange('lr', e.target.value)}
+                  className="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                  placeholder="Enter your forecast"
+                  disabled={showResults}
+                />
+                {showResults && (
+                  <div className="flex items-center gap-2">
+                    {checkAnswer('lr') ? (
+                      <CheckCircle className="w-6 h-6 text-green-500" />
+                    ) : (
+                      <XCircle className="w-6 h-6 text-red-500" />
+                    )}
+                    <span className="text-sm font-semibold text-gray-700">
+                      Correct: {correctAnswers.lr.toFixed(2)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-4 mt-8">
+            {!showResults ? (
+              <button
+                onClick={handleSubmit}
+                className="flex-1 bg-indigo-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2"
+              >
+                <CheckCircle className="w-5 h-5" />
+                Check Answers
+              </button>
+            ) : (
+              <button
+                onClick={handleReset}
+                className="flex-1 bg-gray-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-gray-700 transition-colors flex items-center justify-center gap-2"
+              >
+                <RotateCcw className="w-5 h-5" />
+                Try Again
+              </button>
+            )}
+          </div>
+
+          {showResults && (
+            <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <h3 className="font-semibold text-blue-900 mb-2">📚 Learning Tips:</h3>
+              <ul className="text-sm text-blue-800 space-y-1">
+                <li>• Moving averages smooth out fluctuations but lag behind trends</li>
+                <li>• Weighted moving averages give more importance to recent data</li>
+                <li>• Exponential smoothing adapts quickly with higher α values</li>
+                <li>• Linear regression captures overall trends but may miss patterns</li>
+              </ul>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default ForecastingTool;
